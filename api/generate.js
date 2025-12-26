@@ -27,32 +27,32 @@ const buildThumbnailWorkflow = (imageUrl) => {
 
   const generateNode = imageUrl
     ? {
-        'node-generate': {
-          id: 'node-generate',
-          type: 'run',
-          depends: ['input', 'node-NHTTTG2mGY'],
-          app: 'fal-ai/nano-banana-pro/edit',
-          input: {
-            aspect_ratio: '16:9',
-            resolution: '2K',
-            image_urls: ['$input.image_url_field'],
-            prompt: '$node-NHTTTG2mGY.results',
-          },
+      'node-generate': {
+        id: 'node-generate',
+        type: 'run',
+        depends: ['input', 'node-NHTTTG2mGY'],
+        app: 'fal-ai/nano-banana-pro/edit',
+        input: {
+          aspect_ratio: '16:9',
+          resolution: '2K',
+          image_urls: ['$input.image_url_field'],
+          prompt: '$node-NHTTTG2mGY.results',
         },
-      }
+      },
+    }
     : {
-        'node-generate': {
-          id: 'node-generate',
-          type: 'run',
-          depends: ['input', 'node-NHTTTG2mGY'],
-          app: 'fal-ai/flux/dev',
-          input: {
-            prompt: '$node-NHTTTG2mGY.results',
-            aspect_ratio: '16:9',
-            num_images: 1,
-          },
+      'node-generate': {
+        id: 'node-generate',
+        type: 'run',
+        depends: ['input', 'node-NHTTTG2mGY'],
+        app: 'fal-ai/flux/dev',
+        input: {
+          prompt: '$node-NHTTTG2mGY.results',
+          aspect_ratio: '16:9',
+          num_images: 1,
         },
-      };
+      },
+    };
 
   const crops = {
     'node-crop-1': {
@@ -150,6 +150,17 @@ const dataUrlToBlob = (dataUrl) => {
 };
 
 export default async function handler(req, res) {
+  // Enable CORS
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
     return;
@@ -164,6 +175,7 @@ export default async function handler(req, res) {
 
   const falKey = process.env.FAL_KEY;
   if (!falKey) {
+    console.error('Missing FAL_KEY environment variable');
     res.status(500).json({ error: 'Missing FAL_KEY on the server.' });
     return;
   }
@@ -198,6 +210,7 @@ export default async function handler(req, res) {
       .filter((url) => Boolean(url));
 
     if (!variations || variations.length === 0) {
+      console.error('FAL workflow returned no images:', output);
       res.status(500).json({ error: 'FAL workflow returned no images.' });
       return;
     }
@@ -205,6 +218,9 @@ export default async function handler(req, res) {
     res.status(200).json({ variations });
   } catch (error) {
     console.error('FAL generate error:', error);
-    res.status(500).json({ error: 'Failed to generate thumbnails.' });
+    res.status(500).json({
+      error: 'Failed to generate thumbnails.',
+      details: error.message
+    });
   }
 }
