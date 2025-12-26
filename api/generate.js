@@ -1,9 +1,5 @@
 import { fal } from '@fal-ai/client';
-import { Blob as NodeBlob } from 'buffer';
-
-if (typeof globalThis.Blob === 'undefined') {
-  globalThis.Blob = NodeBlob;
-}
+import { put } from '@vercel/blob';
 
 const buildThumbnailWorkflow = (imageUrl) => {
   const baseNodes = {
@@ -146,12 +142,24 @@ const extractImageUrl = (value) => {
   return null;
 };
 
-const dataUrlToBlob = (dataUrl) => {
+const uploadBase64ToVercelBlob = async (dataUrl) => {
+  // Extract base64 content and mime type
   const [meta, base64] = dataUrl.split(',');
   const mimeMatch = meta.match(/data:(.*);base64/);
-  const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+  const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+  const ext = mime.split('/')[1] || 'png';
+
+  // Convert to Buffer
   const buffer = Buffer.from(base64, 'base64');
-  return new Blob([buffer], { type: mime });
+
+  // Upload to Vercel Blob storage
+  const filename = `upload-${Date.now()}.${ext}`;
+  const blob = await put(filename, buffer, {
+    access: 'public',
+    contentType: mime,
+  });
+
+  return blob.url;
 };
 
 const getErrorPayload = (error) => {
@@ -202,13 +210,22 @@ export default async function handler(req, res) {
   try {
     let uploadedImageUrl;
     if (Array.isArray(images) && images.length > 0 && typeof images[0] === 'string') {
-      const blob = dataUrlToBlob(images[0]);
-      uploadedImageUrl = await fal.storage.upload(blob);
+      // Check for Vercel Blob token
+      if (!process.env.BLOB_READ_WRITE_TOKEN) {
+        console.warn('Missing BLOB_READ_WRITE_TOKEN - skipping image upload');
+      } else {
+        try {
+          uploadedImageUrl = await uploadBase64ToVercelBlob(images[0]);
+        } catch (uploadError) {
+          console.error('Image upload failed:', uploadError);
+          // Continue without the image if upload fails
+        }
+      }
     }
 
     const workflow = buildThumbnailWorkflow(uploadedImageUrl);
 
-    const stream = await fal.stream('workflows/execute', {
+    const result = await fal.subscribe('workflows/execute', {
       input: {
         input: {
           text1: prompt,
@@ -217,10 +234,13 @@ export default async function handler(req, res) {
         },
         workflow,
       },
+      logs: true,
+      onQueueUpdate: (update) => {
+        console.log('Queue update:', update.status);
+      },
     });
 
-    const result = await stream.done();
-    const output = (result?.data)?.output ?? result?.data;
+    const output = result?.data?.output ?? result?.data;
 
     const variations = ['image_1', 'image_2', 'image_3', 'image_4']
       .map((key) => extractImageUrl(output?.[key]))

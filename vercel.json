@@ -4,7 +4,8 @@
   "outputDirectory": "dist",
   "functions": {
     "api/**/*.js": {
-      "maxDuration": 60
+      "maxDuration": 120,
+      "memory": 1024
     }
   },
   "rewrites": [
