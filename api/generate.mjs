@@ -1,158 +1,14 @@
 import { fal } from '@fal-ai/client';
 import { put } from '@vercel/blob';
 
-const buildThumbnailWorkflow = (imageUrl) => {
-  const baseNodes = {
-    input: {
-      id: 'input',
-      type: 'input',
-      depends: [],
-      input: {
-        text1: '',
-        image_url_field: imageUrl ?? '',
-        upscale_factor: 2,
-      },
-    },
-    'node-NHTTTG2mGY': {
-      id: 'node-NHTTTG2mGY',
-      type: 'run',
-      depends: ['input'],
-      app: 'fal-ai/text-concat',
-      input: {
-        text1: '$input.text1',
-        text2:
-          '\n\nGenerate ONE single cinematic 16:9 image suitable for video thumbnails.\nCompose the image so that:\n- Left side supports a strong close-up crop\n- Right side supports a wider cinematic crop\n- Center area is clean and high-contrast\n- Bottom area contains negative space for text\nDo NOT create grids, borders, or split panels.\nMaintain a single cohesive scene and consistent subject identity.',
-      },
-    },
-  };
-
-  const generateNode = imageUrl
-    ? {
-      'node-generate': {
-        id: 'node-generate',
-        type: 'run',
-        depends: ['input', 'node-NHTTTG2mGY'],
-        app: 'fal-ai/nano-banana-pro/edit',
-        input: {
-          aspect_ratio: '16:9',
-          resolution: '2K',
-          image_urls: ['$input.image_url_field'],
-          prompt: '$node-NHTTTG2mGY.results',
-        },
-      },
-    }
-    : {
-      'node-generate': {
-        id: 'node-generate',
-        type: 'run',
-        depends: ['input', 'node-NHTTTG2mGY'],
-        app: 'fal-ai/flux/dev',
-        input: {
-          prompt: '$node-NHTTTG2mGY.results',
-          aspect_ratio: '16:9',
-          num_images: 1,
-        },
-      },
-    };
-
-  const crops = {
-    'node-crop-1': {
-      id: 'node-crop-1',
-      type: 'run',
-      depends: ['node-generate'],
-      app: 'fal-ai/workflow-utilities/crop-image',
-      input: {
-        x_percent: 0,
-        y_percent: 0,
-        width_percent: 50,
-        height_percent: 100,
-        image_url: '$node-generate.images.0.url',
-      },
-    },
-    'node-crop-2': {
-      id: 'node-crop-2',
-      type: 'run',
-      depends: ['node-generate'],
-      app: 'fal-ai/workflow-utilities/crop-image',
-      input: {
-        x_percent: 50,
-        y_percent: 0,
-        width_percent: 50,
-        height_percent: 100,
-        image_url: '$node-generate.images.0.url',
-      },
-    },
-    'node-crop-3': {
-      id: 'node-crop-3',
-      type: 'run',
-      depends: ['node-generate'],
-      app: 'fal-ai/workflow-utilities/crop-image',
-      input: {
-        x_percent: 25,
-        y_percent: 0,
-        width_percent: 50,
-        height_percent: 60,
-        image_url: '$node-generate.images.0.url',
-      },
-    },
-    'node-crop-4': {
-      id: 'node-crop-4',
-      type: 'run',
-      depends: ['node-generate'],
-      app: 'fal-ai/workflow-utilities/crop-image',
-      input: {
-        x_percent: 25,
-        y_percent: 40,
-        width_percent: 50,
-        height_percent: 60,
-        image_url: '$node-generate.images.0.url',
-      },
-    },
-  };
-
-  const output = {
-    output: {
-      id: 'output',
-      type: 'display',
-      depends: ['node-crop-1', 'node-crop-2', 'node-crop-3', 'node-crop-4'],
-      fields: {
-        image_1: '$node-crop-1.image',
-        image_2: '$node-crop-2.image',
-        image_3: '$node-crop-3.image',
-        image_4: '$node-crop-4.image',
-      },
-    },
-  };
-
-  return {
-    ...baseNodes,
-    ...generateNode,
-    ...crops,
-    ...output,
-  };
-};
-
-const extractImageUrl = (value) => {
-  if (!value) return null;
-  if (typeof value === 'string') return value;
-  if (typeof value === 'object' && 'url' in value) {
-    const maybeUrl = value.url;
-    return typeof maybeUrl === 'string' ? maybeUrl : null;
-  }
-  return null;
-};
-
 const uploadBase64ToVercelBlob = async (dataUrl) => {
-  // Extract base64 content and mime type
   const [meta, base64] = dataUrl.split(',');
   const mimeMatch = meta.match(/data:(.*);base64/);
   const mime = mimeMatch ? mimeMatch[1] : 'image/png';
   const ext = mime.split('/')[1] || 'png';
 
-  // Convert to Buffer
   const buffer = Buffer.from(base64, 'base64');
 
-  // Upload to Vercel Blob storage
   const filename = `upload-${Date.now()}.${ext}`;
   const blob = await put(filename, buffer, {
     access: 'public',
@@ -160,6 +16,19 @@ const uploadBase64ToVercelBlob = async (dataUrl) => {
   });
 
   return blob.url;
+};
+
+const cropImage = async (imageUrl, x, y, width, height) => {
+  const result = await fal.subscribe('fal-ai/workflow-utilities/crop-image', {
+    input: {
+      image_url: imageUrl,
+      x_percent: x,
+      y_percent: y,
+      width_percent: width,
+      height_percent: height,
+    },
+  });
+  return result.data.image.url;
 };
 
 const getErrorPayload = (error) => {
@@ -175,7 +44,6 @@ const getErrorPayload = (error) => {
 };
 
 export default async function handler(req, res) {
-  // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
@@ -208,9 +76,9 @@ export default async function handler(req, res) {
   fal.config({ credentials: falKey });
 
   try {
+    // Step 1: Upload image if provided
     let uploadedImageUrl;
     if (Array.isArray(images) && images.length > 0 && typeof images[0] === 'string') {
-      // Check for Vercel Blob token
       if (!process.env.BLOB_READ_WRITE_TOKEN) {
         console.warn('Missing BLOB_READ_WRITE_TOKEN - skipping image upload');
       } else {
@@ -218,44 +86,66 @@ export default async function handler(req, res) {
           uploadedImageUrl = await uploadBase64ToVercelBlob(images[0]);
         } catch (uploadError) {
           console.error('Image upload failed:', uploadError);
-          // Continue without the image if upload fails
         }
       }
     }
 
-    const workflow = buildThumbnailWorkflow(uploadedImageUrl);
+    // Step 2: Enhance prompt with instructions
+    const enhancedPrompt = prompt + '\n\nGenerate ONE single cinematic 16:9 image suitable for video thumbnails.\nCompose the image so that:\n- Left side supports a strong close-up crop\n- Right side supports a wider cinematic crop\n- Center area is clean and high-contrast\n- Bottom area contains negative space for text\nDo NOT create grids, borders, or split panels.\nMaintain a single cohesive scene and consistent subject identity.';
 
-    const result = await fal.subscribe('workflows/execute', {
-      input: {
+    // Step 3: Generate the main image
+    let mainImageUrl;
+    if (uploadedImageUrl) {
+      // Use nano-banana-pro/edit for image-to-image
+      const generateResult = await fal.subscribe('fal-ai/nano-banana-pro/edit', {
         input: {
-          text1: prompt,
-          image_url_field: uploadedImageUrl ?? '',
-          upscale_factor: 2,
+          prompt: enhancedPrompt,
+          image_urls: [uploadedImageUrl],
+          aspect_ratio: '16:9',
+          resolution: '2K',
         },
-        workflow,
-      },
-      logs: true,
-      onQueueUpdate: (update) => {
-        console.log('Queue update:', update.status);
-      },
-    });
+        logs: true,
+        onQueueUpdate: (update) => {
+          console.log('Generate queue update:', update.status);
+        },
+      });
+      mainImageUrl = generateResult.data.images[0].url;
+    } else {
+      // Use flux/dev for text-to-image
+      const generateResult = await fal.subscribe('fal-ai/flux/dev', {
+        input: {
+          prompt: enhancedPrompt,
+          aspect_ratio: '16:9',
+          num_images: 1,
+        },
+        logs: true,
+        onQueueUpdate: (update) => {
+          console.log('Generate queue update:', update.status);
+        },
+      });
+      mainImageUrl = generateResult.data.images[0].url;
+    }
 
-    const output = result?.data?.output ?? result?.data;
+    // Step 4: Create 4 crops from the main image
+    const cropPromises = [
+      cropImage(mainImageUrl, 0, 0, 50, 100),     // Left half
+      cropImage(mainImageUrl, 50, 0, 50, 100),    // Right half
+      cropImage(mainImageUrl, 25, 0, 50, 60),     // Center top
+      cropImage(mainImageUrl, 25, 40, 50, 60),    // Center bottom
+    ];
 
-    const variations = ['image_1', 'image_2', 'image_3', 'image_4']
-      .map((key) => extractImageUrl(output?.[key]))
-      .filter((url) => Boolean(url));
+    const variations = await Promise.all(cropPromises);
 
     if (!variations || variations.length === 0) {
-      console.error('FAL workflow returned no images:', output);
-      res.status(500).json({ error: 'FAL workflow returned no images.' });
+      console.error('Failed to create variations');
+      res.status(500).json({ error: 'Failed to create thumbnail variations.' });
       return;
     }
 
     res.status(200).json({ variations });
   } catch (error) {
     const payload = getErrorPayload(error);
-    console.error('FAL generate error:', error);
+    console.error('Generation error:', error);
     res.status(payload.status).json({
       error: 'Failed to generate thumbnails.',
       details: payload.details,
