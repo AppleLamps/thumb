@@ -6,7 +6,7 @@ export const useGeneration = () => {
   const [variations, setVariations] = useState<string[]>([]);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Cleanup interval on unmount
   useEffect(() => {
