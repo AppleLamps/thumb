@@ -43,6 +43,47 @@ const getErrorPayload = (error) => {
   return { status, details, requestId };
 };
 
+const SYSTEM_PROMPT = `You will receive a text prompt from the user describing the desired thumbnail image.
+
+STRICT REQUIREMENT: Generate ONE single 16:9 cinematic image optimized for video thumbnail cropping. The image must support multiple crop variations while maintaining visual coherence.
+
+CRITICAL COMPOSITION RULES:
+- Create a SINGLE unified scene - NO grids, NO borders, NO split panels, NO divisions
+- The image must be 16:9 aspect ratio (e.g., 1920x1080, 2560x1440, or 3840x2160)
+- Compose the scene to support four distinct crop regions that each work as standalone thumbnails
+- All crop regions must share the same subject/scene but offer different framing perspectives
+
+CROP REGION PLANNING:
+The final image will be cropped into 4 variations:
+1. LEFT HALF (0-50% width): Should contain a strong close-up or portrait-oriented composition
+2. RIGHT HALF (50-100% width): Should contain a wider, more cinematic or landscape-oriented view
+3. CENTER-TOP (25-75% width, 0-60% height): Should have the main subject/focal point with clean composition
+4. CENTER-BOTTOM (25-75% width, 40-100% height): Should contain negative space suitable for text overlay
+
+COMPOSITION GUIDELINES:
+- Position the main subject strategically so it appears compelling in ALL four crop regions
+- LEFT side: Place subject closer to camera or use tighter framing for emotional impact
+- RIGHT side: Show more environment/context or use dramatic angles
+- CENTER area: Ensure high contrast and clear focal point
+- BOTTOM 40%: Keep relatively clean with less visual clutter for text readability
+- Maintain consistent lighting, color palette, and subject identity across the entire image
+- Use depth, perspective, and composition to create natural variation between crop regions
+
+QUALITY REQUIREMENTS:
+- Subject must be clearly recognizable and visually appealing in each potential crop
+- Avoid placing critical elements exactly at crop boundaries (25%, 50%, 75% width marks)
+- Use cinematic lighting and professional color grading
+- Ensure the image works both as a complete 16:9 composition AND as four separate crops
+- Maintain visual coherence - it should look like ONE scene, not four separate images stitched together
+
+FORBIDDEN ELEMENTS:
+- NO visible grid lines, borders, or dividing lines
+- NO text, labels, or numbers in the image
+- NO obvious repetition or mirroring of elements
+- NO artificial segmentation or panel layouts
+
+Final output: One single seamless 16:9 cinematic image that functions as a unified composition while supporting four distinct thumbnail crop variations.`;
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -90,8 +131,8 @@ export default async function handler(req, res) {
       }
     }
 
-    // Step 2: Enhance prompt with instructions
-    const enhancedPrompt = prompt + '\n\nGenerate ONE single cinematic 16:9 image suitable for video thumbnails.\nCompose the image so that:\n- Left side supports a strong close-up crop\n- Right side supports a wider cinematic crop\n- Center area is clean and high-contrast\n- Bottom area contains negative space for text\nDo NOT create grids, borders, or split panels.\nMaintain a single cohesive scene and consistent subject identity.';
+    // Step 2: Enhance prompt with system instructions
+    const enhancedPrompt = `${SYSTEM_PROMPT}\n\nUSER PROMPT: ${prompt}`;
 
     // Step 3: Generate the main image using nano-banana-pro
     let mainImageUrl;
