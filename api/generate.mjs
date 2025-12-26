@@ -93,16 +93,18 @@ export default async function handler(req, res) {
     // Step 2: Enhance prompt with instructions
     const enhancedPrompt = prompt + '\n\nGenerate ONE single cinematic 16:9 image suitable for video thumbnails.\nCompose the image so that:\n- Left side supports a strong close-up crop\n- Right side supports a wider cinematic crop\n- Center area is clean and high-contrast\n- Bottom area contains negative space for text\nDo NOT create grids, borders, or split panels.\nMaintain a single cohesive scene and consistent subject identity.';
 
-    // Step 3: Generate the main image
+    // Step 3: Generate the main image using nano-banana-pro
     let mainImageUrl;
     if (uploadedImageUrl) {
       // Use nano-banana-pro/edit for image-to-image
+      console.log('Using nano-banana-pro/edit for image-to-image generation');
       const generateResult = await fal.subscribe('fal-ai/nano-banana-pro/edit', {
         input: {
           prompt: enhancedPrompt,
           image_urls: [uploadedImageUrl],
           aspect_ratio: '16:9',
           resolution: '2K',
+          num_images: 1,
         },
         logs: true,
         onQueueUpdate: (update) => {
@@ -111,11 +113,13 @@ export default async function handler(req, res) {
       });
       mainImageUrl = generateResult.data.images[0].url;
     } else {
-      // Use flux/dev for text-to-image
-      const generateResult = await fal.subscribe('fal-ai/flux/dev', {
+      // Use nano-banana-pro for text-to-image
+      console.log('Using nano-banana-pro for text-to-image generation');
+      const generateResult = await fal.subscribe('fal-ai/nano-banana-pro', {
         input: {
           prompt: enhancedPrompt,
           aspect_ratio: '16:9',
+          resolution: '2K',
           num_images: 1,
         },
         logs: true,
@@ -125,6 +129,8 @@ export default async function handler(req, res) {
       });
       mainImageUrl = generateResult.data.images[0].url;
     }
+
+    console.log('Main image generated:', mainImageUrl);
 
     // Step 4: Create 4 crops from the main image
     const cropPromises = [
@@ -142,6 +148,7 @@ export default async function handler(req, res) {
       return;
     }
 
+    console.log('Variations created successfully:', variations.length);
     res.status(200).json({ variations });
   } catch (error) {
     const payload = getErrorPayload(error);
