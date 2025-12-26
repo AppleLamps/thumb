@@ -43,46 +43,49 @@ const getErrorPayload = (error) => {
   return { status, details, requestId };
 };
 
-const SYSTEM_PROMPT = `You will receive a text prompt from the user describing the desired thumbnail image.
+const SYSTEM_PROMPT = `You will receive a text prompt from the user describing the desired thumbnail image subject.
 
-STRICT REQUIREMENT: Generate ONE single 16:9 cinematic image optimized for video thumbnail cropping. The image must support multiple crop variations while maintaining visual coherence.
+STRICT REQUIREMENT: Generate one single final image that is a 2x2 grid of 4 equal-sized 16:9 thumbnail variations. The grid must have exactly 2 columns and 2 rows.
 
-CRITICAL COMPOSITION RULES:
-- Create a SINGLE unified scene - NO grids, NO borders, NO split panels, NO divisions
-- The image must be 16:9 aspect ratio (e.g., 1920x1080, 2560x1440, or 3840x2160)
-- Compose the scene to support four distinct crop regions that each work as standalone thumbnails
-- All crop regions must share the same subject/scene but offer different framing perspectives
+CRITICAL LAYOUT RULES:
+- NO outer border or margin around the grid - thumbnails must extend to the very edge of the image
+- NO gaps or visible lines between thumbnails - each thumbnail must be directly adjacent to its neighbors with zero spacing
+- Each thumbnail is exactly 50% of the total image width and 50% of the total image height
+- The first thumbnail starts at pixel 0,0 (top-left corner)
+- Thumbnails are perfectly aligned in a mathematical grid with no visual separators
+- Each thumbnail must be 16:9 aspect ratio
 
-CROP REGION PLANNING:
-The final image will be cropped into 4 variations:
-1. LEFT HALF (0-50% width): Should contain a strong close-up or portrait-oriented composition
-2. RIGHT HALF (50-100% width): Should contain a wider, more cinematic or landscape-oriented view
-3. CENTER-TOP (25-75% width, 0-60% height): Should have the main subject/focal point with clean composition
-4. CENTER-BOTTOM (25-75% width, 40-100% height): Should contain negative space suitable for text overlay
+Grid layout: Read left-to-right, top-to-bottom:
+- Position 1 (TOP-LEFT): 0-50% width, 0-50% height
+- Position 2 (TOP-RIGHT): 50-100% width, 0-50% height  
+- Position 3 (BOTTOM-LEFT): 0-50% width, 50-100% height
+- Position 4 (BOTTOM-RIGHT): 50-100% width, 50-100% height
 
-COMPOSITION GUIDELINES:
-- Position the main subject strategically so it appears compelling in ALL four crop regions
-- LEFT side: Place subject closer to camera or use tighter framing for emotional impact
-- RIGHT side: Show more environment/context or use dramatic angles
-- CENTER area: Ensure high contrast and clear focal point
-- BOTTOM 40%: Keep relatively clean with less visual clutter for text readability
-- Maintain consistent lighting, color palette, and subject identity across the entire image
-- Use depth, perspective, and composition to create natural variation between crop regions
+Content rules for each thumbnail:
+- All 4 thumbnails must share the same subject/theme from the user's prompt
+- Each thumbnail must be a DISTINCT variation with different composition, angle, or style
+- Position 1 (TOP-LEFT): Close-up or portrait-oriented composition for emotional impact
+- Position 2 (TOP-RIGHT): Wider cinematic view with more environment/context
+- Position 3 (BOTTOM-LEFT): Dramatic angle or alternative perspective
+- Position 4 (BOTTOM-RIGHT): Clean composition with negative space at bottom for text overlay
+- The subject must remain recognizable across all 4 thumbnails despite compositional changes
+- Each thumbnail should be visually distinct through framing, angle, or style - NOT through borders
 
-QUALITY REQUIREMENTS:
-- Subject must be clearly recognizable and visually appealing in each potential crop
-- Avoid placing critical elements exactly at crop boundaries (25%, 50%, 75% width marks)
-- Use cinematic lighting and professional color grading
-- Ensure the image works both as a complete 16:9 composition AND as four separate crops
-- Maintain visual coherence - it should look like ONE scene, not four separate images stitched together
+Quality requirements:
+- Keep the subject clearly recognizable in every thumbnail
+- Each thumbnail must work as a standalone video thumbnail
+- Use cinematic lighting and professional color grading consistently
+- Avoid unwanted artifacts, distortions, or blending between thumbnails
+- Maintain consistent subject identity and color palette across all 4 variations
+- Each thumbnail should be compelling and click-worthy on its own
 
 FORBIDDEN ELEMENTS:
-- NO visible grid lines, borders, or dividing lines
+- NO visible grid lines, borders, or dividing lines between thumbnails
 - NO text, labels, or numbers in the image
-- NO obvious repetition or mirroring of elements
-- NO artificial segmentation or panel layouts
+- NO outer margins or padding around the grid
+- DO NOT create one unified scene - create 4 SEPARATE thumbnail compositions
 
-Final output: One single seamless 16:9 cinematic image that functions as a unified composition while supporting four distinct thumbnail crop variations.`;
+Final output: One single image containing a seamless 2x2 grid of 4 equal 16:9 thumbnails with NO borders, NO gaps, NO margins - just 4 distinct thumbnail variations perfectly tiled edge-to-edge.`;
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -134,7 +137,7 @@ export default async function handler(req, res) {
     // Step 2: Enhance prompt with system instructions
     const enhancedPrompt = `${SYSTEM_PROMPT}\n\nUSER PROMPT: ${prompt}`;
 
-    // Step 3: Generate the main image using nano-banana-pro
+    // Step 3: Generate the 2x2 grid image using nano-banana-pro
     let mainImageUrl;
     if (uploadedImageUrl) {
       // Use nano-banana-pro/edit for image-to-image
@@ -171,14 +174,14 @@ export default async function handler(req, res) {
       mainImageUrl = generateResult.data.images[0].url;
     }
 
-    console.log('Main image generated:', mainImageUrl);
+    console.log('2x2 grid image generated:', mainImageUrl);
 
-    // Step 4: Create 4 crops from the main image
+    // Step 4: Crop the 4 thumbnails from the 2x2 grid
     const cropPromises = [
-      cropImage(mainImageUrl, 0, 0, 50, 100),     // Left half
-      cropImage(mainImageUrl, 50, 0, 50, 100),    // Right half
-      cropImage(mainImageUrl, 25, 0, 50, 60),     // Center top
-      cropImage(mainImageUrl, 25, 40, 50, 60),    // Center bottom
+      cropImage(mainImageUrl, 0, 0, 50, 50),      // Top-left
+      cropImage(mainImageUrl, 50, 0, 50, 50),     // Top-right
+      cropImage(mainImageUrl, 0, 50, 50, 50),     // Bottom-left
+      cropImage(mainImageUrl, 50, 50, 50, 50),    // Bottom-right
     ];
 
     const variations = await Promise.all(cropPromises);
