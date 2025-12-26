@@ -26,7 +26,22 @@ export const generateThumbnails = async (request: GenerationRequest): Promise<Ge
 
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(text || 'Failed to generate thumbnails');
+      let message = text || 'Failed to generate thumbnails';
+
+      try {
+        const parsed = JSON.parse(text);
+        const details = parsed?.error ?? parsed?.message ?? parsed?.details;
+        if (details) {
+          message = typeof details === 'string' ? details : JSON.stringify(details);
+        }
+        if (parsed?.requestId) {
+          message = `${message} (requestId: ${parsed.requestId})`;
+        }
+      } catch {
+        // Keep the plain text fallback when JSON parsing fails.
+      }
+
+      throw new Error(message);
     }
 
     const data = await response.json();

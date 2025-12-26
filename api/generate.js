@@ -1,4 +1,9 @@
 import { fal } from '@fal-ai/client';
+import { Blob as NodeBlob } from 'buffer';
+
+if (typeof globalThis.Blob === 'undefined') {
+  globalThis.Blob = NodeBlob;
+}
 
 const buildThumbnailWorkflow = (imageUrl) => {
   const baseNodes = {
@@ -149,6 +154,18 @@ const dataUrlToBlob = (dataUrl) => {
   return new Blob([buffer], { type: mime });
 };
 
+const getErrorPayload = (error) => {
+  if (!error || typeof error !== 'object') {
+    return { status: 500, details: 'Unknown error.' };
+  }
+
+  const status = typeof error.status === 'number' ? error.status : 500;
+  const details = error.body ?? error.message ?? 'Unknown error.';
+  const requestId = typeof error.requestId === 'string' ? error.requestId : undefined;
+
+  return { status, details, requestId };
+};
+
 export default async function handler(req, res) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -217,10 +234,12 @@ export default async function handler(req, res) {
 
     res.status(200).json({ variations });
   } catch (error) {
+    const payload = getErrorPayload(error);
     console.error('FAL generate error:', error);
-    res.status(500).json({
+    res.status(payload.status).json({
       error: 'Failed to generate thumbnails.',
-      details: error.message
+      details: payload.details,
+      requestId: payload.requestId,
     });
   }
 }
